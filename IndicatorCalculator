@@ -1,0 +1,938 @@
+import pandas as pd
+import numpy as np
+from scipy.signal import argrelextrema
+from binance.exceptions import BinanceAPIException, BinanceRequestException
+from datetime import datetime, timedelta
+import re
+from functools import wraps
+import sys
+
+if sys.version_info >= (3, 9):
+    from zoneinfo import ZoneInfo
+else:
+    from backports.zoneinfo import ZoneInfo
+
+# Resitence & Support
+#//////////////////////////////////////////////////////////////////////////
+@log_dec
+@print_dec
+def resistance_support(%ThisIsAPlaceholder%):
+    """
+    %ThisIsAPlaceholder%
+
+    Parameters
+    ----------
+    %ThisIsAPlaceholder%
+
+    Returns
+    -------
+    %ThisIsAPlaceholder%
+
+    """
+     = .replace("'", "")
+
+    try:
+        ticker = exchange_client.get_klines(symbol=, interval='1m', limit=1)
+        if ticker:
+            []['Current  Price'] = float(ticker[0][4])
+    except BinanceAPIException as e:
+        print(f"Binance API error for {} at 1m interval: {e}")
+    except BinanceRequestException as e:
+        print(f"Binance request error for {} at 1m interval: {e}")
+    except Exception as e:
+        print(f"An unexpected error occurred for {} at 1m interval: {e}")
+
+    current_price = [].get('Current  Price', None)
+    if current_price is None:
+        print(f"Failed to retrieve current price for {}.")
+        return 
+
+    time_frames = {
+        '1m': '1m', '30m': '30m', '1h': '1h', '6h': '6h', '12h': '12h',
+        '1d': '1d', '3d': '3d', '1w': '1w', '2w': '1d', '1M': '1M'
+    }
+
+    for time_frame, interval in time_frames.items():
+        try:
+            if time_frame == '2w':
+                params = {
+                    'symbol':
+                    'interval': '1d',
+                    'endTime': int(end_time.timestamp() * 1000),
+                    'limit': 14
+                }
+            else:
+                params = {
+                    'symbol':
+                    'interval': interval,
+                    'endTime': int(end_time.timestamp() * 1000),
+                    'limit': 1
+                }
+
+            result = exchange_client.get_klines(**params)
+            if result:
+                df = pd.DataFrame(result, columns=['Open Time', 'Open', 'High', 'Low', 'Close', 'Volume', 'Close Time', 'Quote Asset Volume', 'Number of Trades', 'Taker Buy Base Asset Volume', 'Taker Buy Quote Asset Volume', 'Ignore'])
+                high = df['High'].astype(float).max()
+                low = df['Low'].astype(float).min()
+                close = df['Close'].astype(float).iloc[-1]
+                volume = df['Volume'].astype(float).sum()
+
+                vwap = (high * volume + low * volume + close * volume) / (3 * volume)
+
+                resistance = vwap + (high - vwap)
+                support = vwap - (vwap - low)
+
+                delta_to_resistance = ((resistance - current_price) / current_price) * 100
+                delta_to_support = ((current_price - support) / current_price) * 100
+
+                []['Resistance'][time_frame] = resistance
+                []['Support'][time_frame] = support
+                []['% to Resistance'][time_frame] = delta_to_resistance
+                []['% to Support'][time_frame] = delta_to_support
+            else:
+                print(f"No data returned for {} at {time_frame} interval.")
+        except BinanceAPIException as e:
+            print(f"Binance API error for {} at {time_frame} interval: {e}")
+        except BinanceRequestException as e:
+            print(f"Binance request error for {} at {time_frame} interval: {e}")
+        except Exception as e:
+            print(f"An unexpected error occurred for {} at {time_frame} interval: {e}")
+
+    return 
+#//////////////////////////////////////////////////////////////////////////
+
+# Delta
+#//////////////////////////////////////////////////////////////////////////
+@log_dec
+@print_dec
+def delta(%ThisIsAPlaceholder%):
+    """
+    %ThisIsAPlaceholder%
+
+    Parameters
+    ----------
+    %ThisIsAPlaceholder%
+
+    Returns
+    -------
+    %ThisIsAPlaceholder%
+
+    Raises
+    ------
+    %ThisIsAPlaceholder%
+    """
+
+    try:
+        current_price = []['Current  Price']
+    except KeyError:
+        print(f"Current price not available for {}.")
+        return 
+
+    try:
+        last_price = []['Last Buy Price Base']
+    except KeyError:
+        print(f"Last buy price not available for {}.")
+        return 
+
+    try:
+        current_balance_base = []['Current Balance Base']
+    except KeyError:
+        print(f"Current balance base not available for {}.")
+        current_balance_base = 0.0
+
+    try:
+        delta_money = current_price - last_price
+        delta_percentage = ((current_price - last_price) / last_price) * 100 if last_price != 0 else 'neg delta'
+        total_possible_profit = current_balance_base * current_price - (current_balance_base * last_price)
+
+        []['Profit/Loss %'] = delta_percentage
+        []['Profit/Loss $'] = delta_money
+        []['Profit/Loss Total $'] = total_possible_profit
+    except Exception as e:
+        print(f"An unexpected error occurred while calculating delta for {}: {e}")
+
+    return 
+#//////////////////////////////////////////////////////////////////////////
+
+# ATR
+#//////////////////////////////////////////////////////////////////////////
+@log_dec
+@print_dec
+def atr(%ThisIsAPlaceholder%):
+    """
+    %ThisIsAPlaceholder%
+
+    Parameters
+    ----------
+    %ThisIsAPlaceholder%
+
+    Returns
+    -------
+    %ThisIsAPlaceholder%
+
+    """
+     = .replace("'", "")
+
+    try:
+        ticker = exchange_client.get_klines(symbol=, interval='1m', limit=1)
+        if ticker:
+            []['Current  Price'] = float(ticker[0][4])
+    except BinanceAPIException as e:
+        print(f"Binance API error for {} at 1m interval: {e}")
+    except BinanceRequestException as e:
+        print(f"Binance request error for {} at 1m interval: {e}")
+    except Exception as e:
+        print(f"An unexpected error occurred for {} at 1m interval: {e}")
+
+    current_price = [].get('Current  Price', None)
+    if current_price is None:
+        print(f"Failed to retrieve current price for {}.")
+        return 
+
+    intervals = {
+        '1m': '1m', '30m': '30m', '1h': '1h', '6h': '6h', '12h': '12h',
+        '1d': '1d', '3d': '3d', '1w': '1w', '2w': '1d'  # Including '2w' for the custom 2-week interval
+    }
+
+    combined_tr = pd.DataFrame()
+
+    for interval, binance_interval in intervals.items():
+        try:
+            if interval == '2w':
+                params = {
+                    'symbol':
+                    'interval': '1d',
+                    'endTime': int(end_time.timestamp() * 1000),
+                    'limit': 14
+                }
+            else:
+                params = {
+                    'symbol':
+                    'interval': binance_interval,
+                    'endTime': int(end_time.timestamp() * 1000),
+                    'limit': window
+                }
+
+            result = exchange_client.get_klines(**params)
+            if result:
+                df = pd.DataFrame(result, columns=['Open Time', 'Open', 'High', 'Low', 'Close', 'Volume', 'Close Time', 'Quote Asset Volume', 'Number of Trades', 'Taker Buy Base Asset Volume', 'Taker Buy Quote Asset Volume', 'Ignore'])
+                high_prices = df['High'].astype(float)
+                low_prices = df['Low'].astype(float)
+                close_prices = df['Close'].astype(float)
+
+                tr1 = abs(high_prices - low_prices)
+                tr2 = abs(high_prices - close_prices.shift())
+                tr3 = abs(low_prices - close_prices.shift())
+                true_range = pd.concat([tr1, tr2, tr3], axis=1).max(axis=1)
+
+                combined_tr = pd.concat([combined_tr, true_range], ignore_index=True)
+            else:
+                print(f"No data returned for {} at {interval} interval.")
+        except BinanceAPIException as e:
+            print(f"Binance API error for {} at {interval} interval: {e}")
+        except BinanceRequestException as e:
+            print(f"Binance request error for {} at {interval} interval: {e}")
+        except Exception as e:
+            print(f"An unexpected error occurred for {} at {interval} interval: {e}")
+
+    if not combined_tr.empty and len(combined_tr) >= window:
+        atr = combined_tr.rolling(window=window).mean().iloc[-1]
+    else:
+        atr = pd.Series([float('nan')])  # Default to NaN if no data available
+
+    []['ATR'] = atr.item() if not atr.empty else float('nan')
+
+    try:
+        current_close_price = []['Current  Price']
+        atr_percentage = (atr.item() / current_close_price) * 100 if current_close_price else float('nan')
+        []['ATR%'] = atr_percentage
+    except KeyError:
+        print(f"Current  price not available for {}.")
+        []['ATR%'] = float('nan')
+
+    return 
+#//////////////////////////////////////////////////////////////////////////
+
+# ADX
+#//////////////////////////////////////////////////////////////////////////
+@log_dec
+@print_dec
+def adx(, exchange_client, period=14, timeframe='1d', params=None, end_time=None, ohlcv_data=None):
+    """
+    %ThisIsAPlaceholder%
+
+    Parameters
+    ----------
+    %ThisIsAPlaceholder%
+
+    Returns
+    -------
+    %ThisIsAPlaceholder%
+
+
+    Details
+    -------
+    %ThisIsAPlaceholder%
+    """
+
+    adx_timeframes = {
+        '1m': '1m', '3m': '3m', '5m': '5m', '15m': '15m',
+        '30m': '30m', '1h': '1h', '2h': '2h', '4h': '4h',
+        '6h': '6h', '8h': '8h', '12h': '12h', '1d': '1d',
+        '3d': '3d', '1w': '1w', '1M': '1M', '2w': '1d'
+    }
+    adx_short_timeframes = ['30m', '1h', '2h', '4h', '6h', '8h', '12h', '1d']
+    adx_long_timeframes = ['3d', '1w', '1M']
+
+    adx_short_values = []
+    adx_long_values = []
+
+    for timeframe, interval in adx_timeframes.items():
+        if timeframe == '2w':
+            params = {
+                'symbol':
+                'interval': '1d',
+                'endTime': int(end_time.timestamp() * 1000),
+                'limit': 28
+            }
+        else:
+            params = {
+                'symbol':
+                'interval': interval,
+                'endTime': int(end_time.timestamp() * 1000),
+                'limit': period * 2
+            }
+
+        try:
+            result = exchange_client.get_klines(**params)
+        except BinanceAPIException as e:
+            print(f"Binance API error for {} at {interval} interval: {e}")
+            continue
+        except BinanceRequestException as e:
+            print(f"Binance request error for {} at {interval} interval: {e}")
+            continue
+        except Exception as e:
+            print(f"An unexpected error occurred for {} at {interval} interval: {e}")
+            continue
+
+        if result:
+            df = pd.DataFrame(result, columns=['Open Time', 'Open', 'High', 'Low', 'Close', 'Volume', 'Close Time', 'Quote Asset Volume', 'Number of Trades', 'Taker Buy Base Asset Volume', 'Taker Buy Quote Asset Volume', 'Ignore'])
+            high_prices = df['High'].astype(float).values
+            low_prices = df['Low'].astype(float).values
+            close_prices = df['Close'].astype(float).values
+
+            if len(high_prices) < period * 2:
+                print(f"Not enough data for {timeframe} in {}. Skipping this timeframe.")
+                continue
+
+            tr = np.maximum(high_prices - low_prices, np.abs(high_prices - np.roll(close_prices, 1)), np.abs(low_prices - np.roll(close_prices, 1)))
+            tr[0] = 0
+
+            dm_plus = np.where((high_prices - np.roll(high_prices, 1)) > (np.roll(low_prices, 1) - low_prices), high_prices - np.roll(high_prices, 1), 0)
+            dm_minus = np.where((np.roll(low_prices, 1) - low_prices) > (high_prices - np.roll(high_prices, 1)), np.roll(low_prices, 1) - low_prices, 0)
+            dm_plus[0], dm_minus[0] = 0, 0
+
+            tr_smooth = np.zeros(len(tr))
+            dm_plus_smooth = np.zeros(len(dm_plus))
+            dm_minus_smooth = np.zeros(len(dm_minus))
+
+            tr_smooth[period - 1] = tr[:period].mean()
+            dm_plus_smooth[period - 1] = dm_plus[:period].mean()
+            dm_minus_smooth[period - 1] = dm_minus[:period].mean()
+
+            for i in range(period, len(tr)):
+                tr_smooth[i] = (tr_smooth[i - 1] * (period - 1) + tr[i]) / period
+                dm_plus_smooth[i] = (dm_plus_smooth[i - 1] * (period - 1) + dm_plus[i]) / period
+                dm_minus_smooth[i] = (dm_minus_smooth[i - 1] * (period - 1) + dm_minus[i]) / period
+
+            tr_smooth[tr_smooth == 0] = np.nan
+
+            di_plus = 100 * dm_plus_smooth / tr_smooth
+            di_minus = 100 * dm_minus_smooth / tr_smooth
+
+            dx = 100 * np.abs(di_plus - di_minus) / (di_plus + di_minus)
+
+            adx = np.zeros(len(dx))
+            adx[period * 2 - 2] = dx[period - 1:period * 2 - 1].mean()
+
+            for i in range(period * 2 - 1, len(dx)):
+                adx[i] = (adx[i - 1] * (period - 1) + dx[i]) / period
+
+            []['ADX'][timeframe] = adx[-1]
+
+            if timeframe in adx_short_timeframes:
+                adx_short_values.append(adx[-1])
+            elif timeframe in adx_long_timeframes:
+                adx_long_values.append(adx[-1])
+
+        else:
+            print(f"No data returned for {} at {timeframe} interval.")
+
+    adx_short = np.mean(adx_short_values) if adx_short_values else 0
+    adx_long = np.mean(adx_long_values) if adx_long_values else 0
+
+    []['ADX Short'] = adx_short
+    []['ADX Long'] = adx_long
+
+    return 
+#//////////////////////////////////////////////////////////////////////////
+
+# RSI 
+#//////////////////////////////////////////////////////////////////////////
+@log_dec
+@print_dec
+def rsi(%ThisIsAPlaceholder%):
+    """
+    %ThisIsAPlaceholder%
+
+    Parameters
+    ----------
+     %ThisIsAPlaceholder%
+
+    Returns
+    -------
+    %ThisIsAPlaceholder%
+        
+    Details
+    -------
+    %ThisIsAPlaceholder%
+    """
+
+    rsi_timeframes = {
+        '1m': '1m', '3m': '3m', '5m': '5m', '15m': '15m',
+        '30m': '30m', '1h': '1h', '2h': '2h', '4h': '4h',
+        '6h': '6h', '8h': '8h', '12h': '12h', '1d': '1d',
+        '3d': '3d', '1w': '1w', '1M': '1M', '2w': '1d'
+    }
+
+    if 'RSI' not in []:
+        []['RSI'] = {}
+
+    for timeframe, interval in rsi_timeframes.items():
+        if timeframe == '2w':
+            params = {
+                'symbol':
+                'interval': '1d',
+                'endTime': int(end_time.timestamp() * 1000),
+                'limit': 28
+            }
+        else:
+            params = {
+                'symbol':
+                'interval': interval,
+                'endTime': int(end_time.timestamp() * 1000),
+                'limit': period * 2
+            }
+
+        try:
+            result = exchange_client.get_klines(**params)
+        except BinanceAPIException as e:
+            print(f"Binance API error for {} at {interval} interval: {e}")
+            continue
+        except BinanceRequestException as e:
+            print(f"Binance request error for {} at {interval} interval: {e}")
+            continue
+        except Exception as e:
+            print(f"An unexpected error occurred for {} at {interval} interval: {e}")
+            continue
+
+        if result:
+            df = pd.DataFrame(result, columns=['Open Time', 'Open', 'High', 'Low', 'Close', 'Volume', 'Close Time', 'Quote Asset Volume', 'Number of Trades', 'Taker Buy Base Asset Volume', 'Taker Buy Quote Asset Volume', 'Ignore'])
+            close_prices = df['Close'].astype(float).values
+
+            if len(close_prices) < period:
+                print(f"Not enough data for {timeframe} in {}. Skipping this timeframe.")
+                continue
+
+            price_diff = np.diff(close_prices)
+            gains = np.where(price_diff > 0, price_diff, 0)
+            losses = -np.where(price_diff < 0, price_diff, 0)
+
+            avg_gain = np.mean(gains[:period])
+            avg_loss = np.mean(losses[:period])
+
+            for i in range(period, len(price_diff)):
+                gain = gains[i]
+                loss = losses[i]
+
+                avg_gain = (avg_gain * (period - 1) + gain) / period
+                avg_loss = (avg_loss * (period - 1) + loss) / period
+
+            rs = avg_gain / avg_loss if avg_loss != 0 else np.inf
+            rsi_value = 100 - (100 / (1 + rs))
+
+            []['RSI'][timeframe] = rsi_value
+
+        else:
+            print(f"No data returned for {} at {timeframe} interval.")
+
+    return 
+#//////////////////////////////////////////////////////////////////////////
+
+# SMA/EMA
+#//////////////////////////////////////////////////////////////////////////
+@log_dec
+@print_dec
+def sma_ema(%ThisIsAPlaceholder%):
+    '''
+    %ThisIsAPlaceholder%
+
+    Args:
+        %ThisIsAPlaceholder%
+
+    Returns:
+        %ThisIsAPlaceholder%
+    '''
+
+    sma_ema_timeframes = {
+        '1m': '1m', '3m': '3m', '5m': '5m', '15m': '15m',
+        '30m': '30m', '1h': '1h', '2h': '2h', '4h': '4h',
+        '6h': '6h', '8h': '8h', '12h': '12h', '1d': '1d',
+        '3d': '3d', '1w': '1w', '1M': '1M', '2w': '1d'  
+    }
+
+    if 'SMA' not in []:
+        []['SMA'] = {}
+    if 'EMA' not in []:
+        []['EMA'] = {}
+
+    for timeframe, interval in sma_ema_timeframes.items():
+        if timeframe == '2w':
+            params = {
+                'symbol':
+                'interval': '1d',
+                'endTime': int(end_time.timestamp() * 1000),
+                'limit': 28
+            }
+        else:
+            params = {
+                'symbol':
+                'interval': interval,
+                'endTime': int(end_time.timestamp() * 1000),
+                'limit': window * 2
+            }
+
+        try:
+            result = exchange_client.get_klines(**params)
+        except BinanceAPIException as e:
+            print(f"Binance API error for {} at {interval} interval: {e}")
+            continue
+        except BinanceRequestException as e:
+            print(f"Binance request error for {} at {interval} interval: {e}")
+            continue
+        except Exception as e:
+            print(f"An unexpected error occurred for {} at {interval} interval: {e}")
+            continue
+
+        if result:
+            df = pd.DataFrame(result, columns=['Open Time', 'Open', 'High', 'Low', 'Close', 'Volume', 'Close Time', 'Quote Asset Volume', 'Number of Trades', 'Taker Buy Base Asset Volume', 'Taker Buy Quote Asset Volume', 'Ignore'])
+            close_prices = df['Close'].astype(float).values
+
+            if len(close_prices) < window:
+                print(f"Not enough data for {timeframe} in {}. Skipping this timeframe.")
+                continue
+
+            sma_interval = pd.Series(close_prices).rolling(window=window, min_periods=1).mean()
+            ema_interval = pd.Series(close_prices).ewm(alpha=ema_alpha, adjust=False).mean()
+
+            []['SMA'][timeframe] = sma_interval.iloc[-1]
+            []['EMA'][timeframe] = ema_interval.iloc[-1]
+
+        else:
+            print(f"No data returned for {} at {timeframe} interval.")
+
+    return 
+
+@log_dec
+@print_dec
+def sma_long(%ThisIsAPlaceholder%):
+    '''
+    %ThisIsAPlaceholder%
+    
+    Args:
+        %ThisIsAPlaceholder%
+    
+    Returns:
+        %ThisIsAPlaceholder%
+    '''
+
+    params_50d = {
+        'symbol':
+        'interval': '1d',
+        'endTime': int(end_time.timestamp() * 1000),
+        'limit': 50
+    }
+    params_200d = {
+        'symbol':
+        'interval': '1d',
+        'endTime': int(end_time.timestamp() * 1000),
+        'limit': 200
+    }
+
+    try:
+        klines_50d = exchange_client.get_klines(**params_50d)
+        klines_200d = exchange_client.get_klines(**params_200d)
+    except BinanceAPIException as e:
+        print(f"Binance API error for {} at 1d interval: {e}")
+        return 
+    except BinanceRequestException as e:
+        print(f"Binance request error for {} at 1d interval: {e}")
+        return 
+    except Exception as e:
+        print(f"An unexpected error occurred for {} at 1d interval: {e}")
+        return 
+
+    if klines_50d and klines_200d:
+        close_prices_50d = np.array([float(kline[4]) for kline in klines_50d])
+        close_prices_200d = np.array([float(kline[4]) for kline in klines_200d])
+
+        if len(close_prices_50d) < 50:
+            print(f"Not enough data for 50-day SMA in {}.")
+            return 
+        if len(close_prices_200d) < 200:
+            print(f"Not enough data for 200-day SMA in {}.")
+            return 
+
+        # Calculate SMAs
+        sma_50d = np.mean(close_prices_50d)
+        sma_200d = np.mean(close_prices_200d)
+
+        # Update  dictionary
+        if 'SMA' not in []:
+            []['SMA'] = {}
+
+        []['SMA']['SMA_50d'] = sma_50d
+        []['SMA']['SMA_200d'] = sma_200d
+
+    else:
+        if not klines_50d:
+            print(f"No data returned for 50-day SMA in {}.")
+        if not klines_200d:
+            print(f"No data returned for 200-day SMA in {}.")
+
+    return 
+#//////////////////////////////////////////////////////////////////////////
+
+# MACD
+#//////////////////////////////////////////////////////////////////////////
+@log_dec
+@print_dec
+def macd(%ThisIsAPlaceholder%):
+    '''
+    %ThisIsAPlaceholder%
+
+    Args:
+        %ThisIsAPlaceholder%
+
+    Returns:
+        %ThisIsAPlaceholder%
+
+    Details:
+        %ThisIsAPlaceholder%
+    '''
+
+    macd_timeframes = {
+        '1m': '1m', '3m': '3m', '5m': '5m', '15m': '15m',
+        '30m': '30m', '1h': '1h', '2h': '2h', '4h': '4h',
+        '6h': '6h', '8h': '8h', '12h': '12h', '1d': '1d',
+        '3d': '3d', '1w': '1w', '1M': '1M', '2w': '1d'  
+    }
+
+    if 'MACD' not in []:
+        []['MACD'] = {'Line': {}, 'Signal Line': {}, 'Histogram': {}}
+
+    for timeframe, interval in macd_timeframes.items():
+        if timeframe == '2w':
+            params = {
+                'symbol':
+                'interval': '1d',
+                'endTime': int(end_time.timestamp() * 1000),
+                'limit': 28
+            }
+        else:
+            params = {
+                'symbol':
+                'interval': interval,
+                'endTime': int(end_time.timestamp() * 1000),
+                'limit': long_window * 2
+            }
+
+        try:
+            result = exchange_client.get_klines(**params)
+        except BinanceAPIException as e:
+            print(f"Binance API error for {} at {interval} interval: {e}")
+            continue
+        except BinanceRequestException as e:
+            print(f"Binance request error for {} at {interval} interval: {e}")
+            continue
+        except Exception as e:
+            print(f"An unexpected error occurred for {} at {interval} interval: {e}")
+            continue
+
+        if result:
+            df = pd.DataFrame(result, columns=['Open Time', 'Open', 'High', 'Low', 'Close', 'Volume', 'Close Time', 'Quote Asset Volume', 'Number of Trades', 'Taker Buy Base Asset Volume', 'Taker Buy Quote Asset Volume', 'Ignore'])
+            close_prices = df['Close'].astype(float).values
+
+            if len(close_prices) < long_window:
+                print(f"Not enough data for {timeframe} in {}. Skipping this timeframe.")
+                continue
+
+            short_ema = pd.Series(close_prices).ewm(span=short_window, adjust=False).mean()
+            long_ema = pd.Series(close_prices).ewm(span=long_window, adjust=False).mean()
+
+            macd_line = short_ema - long_ema
+            signal_line = macd_line.ewm(span=signal_window, adjust=False).mean()
+
+            macd_histogram = macd_line - signal_line
+
+            []['MACD']['Line'][timeframe] = macd_line.iloc[-1]
+            []['MACD']['Signal Line'][timeframe] = signal_line.iloc[-1]
+            []['MACD']['Histogram'][timeframe] = macd_histogram.iloc[-1]
+
+        else:
+            print(f"No data returned for {} at {timeframe} interval.")
+
+    return 
+#//////////////////////////////////////////////////////////////////////////
+
+# Bollinger Band
+#//////////////////////////////////////////////////////////////////////////
+@log_dec
+@print_dec
+def bollinger_bands(%ThisIsAPlaceholder%):
+    '''
+    %ThisIsAPlaceholder%
+
+    Args:
+        %ThisIsAPlaceholder%
+
+    Returns:
+        %ThisIsAPlaceholder%
+
+    Details:
+        %ThisIsAPlaceholder%
+    '''
+
+    bollinger_timeframes = {
+        '1m': '1m', '3m': '3m', '5m': '5m', '15m': '15m',
+        '30m': '30m', '1h': '1h', '2h': '2h', '4h': '4h',
+        '6h': '6h', '8h': '8h', '12h': '12h', '1d': '1d',
+        '3d': '3d', '1w': '1w', '2w': '1d', '1M': '1M' 
+    }
+
+    for timeframe, interval in bollinger_timeframes.items():
+        if timeframe == '2w':
+            params = {
+                'symbol':
+                'interval': '1d',
+                'endTime': int(end_time.timestamp() * 1000),
+                'limit': 14
+            }
+        else:
+            params = {
+                'symbol':
+                'interval': interval,
+                'endTime': int(end_time.timestamp() * 1000),
+                'limit': default_window
+            }
+
+        try:
+            result = exchange_client.get_klines(**params)
+        except BinanceAPIException as e:
+            print(f"Binance API error for {} at {interval} interval: {e}")
+            continue
+        except BinanceRequestException as e:
+            print(f"Binance request error for {} at {interval} interval: {e}")
+            continue
+        except Exception as e:
+            print(f"An unexpected error occurred for {} at {interval} interval: {e}")
+            continue
+
+        if result:
+            df = pd.DataFrame(result, columns=['Open Time', 'Open', 'High', 'Low', 'Close', 'Volume', 'Close Time', 'Quote Asset Volume', 'Number of Trades', 'Taker Buy Base Asset Volume', 'Taker Buy Quote Asset Volume', 'Ignore'])
+            close_prices = df['Close'].astype(float).values
+
+            if len(close_prices) >= default_window or (timeframe == '2w' and len(close_prices) == 14):
+                rolling_mean = pd.Series(close_prices).rolling(window=default_window).mean()
+                rolling_std = pd.Series(close_prices).rolling(window=default_window).std()
+
+                upper_band = rolling_mean + 2 * rolling_std
+                lower_band = rolling_mean - 2 * rolling_std
+
+                []['Boll band']['Upper Bollinger Band'][timeframe] = upper_band.iloc[-1]
+                []['Boll band']['Middle Bollinger Band'][timeframe] = rolling_mean.iloc[-1]
+                []['Boll band']['Lower Bollinger Band'][timeframe] = lower_band.iloc[-1]
+            else:
+                print(f"Insufficient data points ({len(close_prices)}) in {timeframe} for {} to calculate Bollinger Bands")
+
+        else:
+            print(f"No data returned for {} at {timeframe} interval.")
+
+    return 
+#//////////////////////////////////////////////////////////////////////////
+
+# Fib 1.618
+#//////////////////////////////////////////////////////////////////////////
+@log_dec
+@print_dec
+def fibonacci_levels(%ThisIsAPlaceholder%):
+    '''
+    %ThisIsAPlaceholder%
+  
+    Args:
+         %ThisIsAPlaceholder%
+  
+    Returns:
+        %ThisIsAPlaceholder%
+  
+    Details:
+        %ThisIsAPlaceholder%
+    '''
+
+    fibonacci_timeframes = {
+        '1m': '1m', '3m': '3m', '5m': '5m', '15m': '15m',
+        '30m': '30m', '1h': '1h', '2h': '2h', '4h': '4h',
+        '6h': '6h', '8h': '8h', '12h': '12h', '1d': '1d',
+        '3d': '3d', '1w': '1w', '2w': '1d', '1M': '1M'
+    }
+
+    if 'Fibonacci Levels' not in []:
+        []['Fibonacci Levels'] = {str(level): {} for level in fibonacci_levels}
+
+    for timeframe, interval in fibonacci_timeframes.items():
+        if timeframe == '2w':
+            params = {
+                'symbol':
+                'interval': '1d',
+                'endTime': int(end_time.timestamp() * 1000),
+                'limit': 28
+            }
+        else:
+            params = {
+                'symbol':
+                'interval': interval,
+                'endTime': int(end_time.timestamp() * 1000),
+                'limit': 100
+            }
+
+        try:
+            result = exchange_client.get_klines(**params)
+        except BinanceAPIException as e:
+            print(f"Binance API error for {} at {interval} interval: {e}")
+            continue
+        except BinanceRequestException as e:
+            print(f"Binance request error for {} at {interval} interval: {e}")
+            continue
+        except Exception as e:
+            print(f"An unexpected error occurred for {} at {interval} interval: {e}")
+            continue
+
+        if result:
+            high_prices = np.array([float(candle[2]) for candle in result])
+            low_prices = np.array([float(candle[3]) for candle in result])
+
+            swing_highs = argrelextrema(high_prices, np.greater)[0]
+            swing_lows = argrelextrema(low_prices, np.less)[0]
+
+            if len(swing_highs) >= 2 and len(swing_lows) >= 2:
+                highest_high = np.max(high_prices[swing_highs])
+                lowest_low = np.min(low_prices[swing_lows])
+                price_range = highest_high - lowest_low
+
+                for level in fibonacci_levels:
+                    []['Fibonacci Levels'][str(level)][timeframe] = lowest_low + level * price_range
+            else:
+                print(f"Not enough swing points for {timeframe} in {}. Skipping this timeframe.")
+
+        else:
+            print(f"No data returned for {} at {timeframe} interval.")
+
+    return 
+#//////////////////////////////////////////////////////////////////////////
+
+# Oscillator
+#//////////////////////////////////////////////////////////////////////////
+@log_dec
+@print_dec
+def oscillator(%ThisIsAPlaceholder%):
+    '''
+    %ThisIsAPlaceholder%
+
+    Args:
+        %ThisIsAPlaceholder%
+
+    Returns:
+        %ThisIsAPlaceholder%
+
+    Details:
+       %ThisIsAPlaceholder%
+    '''
+
+    oscillator_timeframes = {
+        '1m': '1m', '3m': '3m', '5m': '5m', '15m': '15m',
+        '30m': '30m', '1h': '1h', '2h': '2h', '4h': '4h',
+        '6h': '6h', '8h': '8h', '12h': '12h', '1d': '1d',
+        '3d': '3d', '1w': '1w', '2w': '1d', '1M': '1M'
+    }
+
+    if 'Oscillator' not in []:
+        []['Oscillator'] = {'slowK': {}, 'slowD': {}, 'signal': {}}
+
+    for timeframe, interval in oscillator_timeframes.items():
+        if timeframe == '2w':
+            params = {
+                'symbol':
+                'interval': '1d',
+                'endTime': int(end_time.timestamp() * 1000),
+                'limit': 28
+            }
+        else:
+            params = {
+                'symbol':
+                'interval': interval,
+                'endTime': int(end_time.timestamp() * 1000),
+                'limit': period + d_smooth - 1
+            }
+
+        try:
+            result = exchange_client.get_klines(**params)
+        except BinanceAPIException as e:
+            print(f"Binance API error for {} at {interval} interval: {e}")
+            continue
+        except BinanceRequestException as e:
+            print(f"Binance request error for {} at {interval} interval: {e}")
+            continue
+        except Exception as e:
+            print(f"An unexpected error occurred for {} at {interval} interval: {e}")
+            continue
+
+        if result:
+            low_prices = np.array([float(candle[3]) for candle in result])
+            high_prices = np.array([float(candle[2]) for candle in result])
+            close_prices = np.array([float(candle[4]) for candle in result])
+
+            if len(low_prices) < period or len(high_prices) < period or len(close_prices) < period:
+                print(f"Not enough data for {timeframe} in {}. Skipping this timeframe.")
+                continue
+
+            low_min = low_prices[-period:].min()
+            high_max = high_prices[-period:].max()
+            percent_k = 100 * ((close_prices[-1] - low_min) / (high_max - low_min))
+
+            if timeframe == list(oscillator_timeframes.keys())[0]:
+                percent_d = percent_k
+                signal = percent_d
+            else:
+                prev_timeframe = list(oscillator_timeframes.keys())[list(oscillator_timeframes.keys()).index(timeframe) - 1]
+                percent_d = ([]['Oscillator']['slowD'][prev_timeframe] * (k_smooth - 1) + percent_k) / k_smooth
+                signal = ([]['Oscillator']['signal'][prev_timeframe] * (d_smooth - 1) + percent_d) / d_smooth
+
+            []['Oscillator']['slowK'][timeframe] = percent_k
+            []['Oscillator']['slowD'][timeframe] = percent_d
+            []['Oscillator']['signal'][timeframe] = signal
+
+        else:
+            print(f"No data returned for {} at {timeframe} interval.")
+
+    return 
+#//////////////////////////////////////////////////////////////////////////
